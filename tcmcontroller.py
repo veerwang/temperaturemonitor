@@ -2,6 +2,8 @@ import serial
 from serial.tools import list_ports
 
 import logging
+import threading
+import time
 
 from zlib import crc32
 
@@ -11,19 +13,23 @@ logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(
 
 class InstrumentStatus:
     def __init__(self):
+        self.reset_value()
+
+    def reset_value(self):
         self.instrumentIndex = 0
         self.MAXinstrument = 0
         self.percent = 0
         self.reply = ''
         self.retry = 0
         self.MAXretry = 5
+        self.value = 0
         # INIT:  
         # PROCESS:
         # OK
         # FAIL
         # FINISH
         # CONTINUE 
-        self.status = 'INIT'
+        self.status = 'FINISH'
 
 
 class TCMController:
@@ -49,13 +55,9 @@ class TCMController:
         # type V: means reply is value
         # type S: means reply=8 is value save OK
         # type R: just display reply from TMC
-        self.instruments = [ ]
+        self.instruments = []
 
         self.instrumentstatus.MAXinstrument = len(self.instruments)
-
-    def __del__(self):
-        if self.packet_serial is not None:
-            self.packet_serial.close()
 
     def set_instruments_sets(self, instruments_list):
         self.instruments = instruments_list 
@@ -155,10 +157,12 @@ class TCMController:
         if self.thread_read_received_packet:
             self.thread_read_received_packet.join()
 
+        if self.packet_serial is not None:
+            self.packet_serial.close()
+
     def run(self):
         try:
-            self.start()
-            while self.instrumentstatus.status != 'FINISH':
+            while self.running is True and self.instrumentstatus.status != 'FINISH':
                 self.transparent_command(
                         self.instruments[self.instrumentstatus.instrumentIndex][0])
                 self.instrumentstatus.status = 'PROCESS'
@@ -195,5 +199,4 @@ class TCMController:
 
         except KeyboardInterrupt:
             print("Stopping...")
-        finally:
             self.stop()

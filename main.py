@@ -15,6 +15,7 @@ from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFi
 from PyQt5.QtCore import QStringListModel
 
 from csvwrapper import CSVHandler
+from tcmcontroller import TCMController
 
 
 def assemble_instrument(instrument_dict):
@@ -23,15 +24,22 @@ def assemble_instrument(instrument_dict):
     register = instrument_dict['Register']
     type = instrument_dict['Type']
 
-    if type == 'R':
-        return [f"{module}:{register}?@{device}", 'R'] 
+    if type == 'V':
+        return [f"{module}:{register}?@{device}", 'V'] 
     else:
         return None
 
 class CommandApp(QWidget):
-    def __init__(self):
+    def __init__(self, simulation = False):
         super().__init__()
         self.init_ui()
+        self.simulation = simulation
+        if self.simulation is not True:
+            self.controller = TCMController("/dev/ttyUSB0", 57600)
+            self.controller.start()
+
+    def __del__(self):
+        pass
 
     def init_ui(self):
         # Create widgets
@@ -101,12 +109,19 @@ class CommandApp(QWidget):
 
             handler = CSVHandler(file_name)
             data = handler.read_csv()
+            instruments = []
             for item in data:
                 ins = assemble_instrument(item)
-                print(ins)
+                instruments.append(ins)
+
                 if ins is not None:
                     self.log_edit.append(str(ins))
 
+            if instruments is not None:
+                for ins in instruments:
+                    self.controller.set_instruments_sets([ins])
+                    self.controller.run()
+                    print(self.controller.get_instruments_return_value())
 
     def save_csv(self):
         """Save the current data in the QListView back to a CSV file"""
@@ -156,7 +171,14 @@ class CommandApp(QWidget):
         """Clear the contents of log_edit"""
         self.log_edit.clear()
 
+    def closeEvent(self, event):
+        if self.simulation is not True:
+            self.controller.stop()
+
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    ex = CommandApp()
+    debug_flag = False
+    if len(sys.argv) == 2 and sys.argv[1] == '--simulation':
+        debug_flag = True
+    ex = CommandApp(debug_flag)
     sys.exit(app.exec_())
