@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import QApplication, QWidget, QPushButton, QVBoxLayout, QFi
 from PyQt5.QtCore import QStringListModel
 
 from csvwrapper import CSVHandler
-from tcmcontroller import TCMController
+from tcmcontroller import ControllerWrapper
 
 
 def assemble_instrument(instrument_dict):
@@ -33,9 +33,10 @@ class CommandApp(QWidget):
     def __init__(self, simulation = False):
         super().__init__()
         self.init_ui()
-        self.simulation = simulation
-        if self.simulation is not True:
-            self.controller = TCMController("/dev/ttyUSB0", 57600)
+
+        self.controllerWrapper = ControllerWrapper(simulation) 
+
+        self.controllerWrapper.controller.processResult.connect(self.appendText)
 
     def __del__(self):
         pass
@@ -47,6 +48,7 @@ class CommandApp(QWidget):
         self.save_button = QPushButton('Save CSV File', self)
         self.list_view = QListView(self)
         self.edit_button = QPushButton('Edit Selected Row', self)
+        self.query_button = QPushButton('Query Data', self)
         self.clear_log_button = QPushButton('Clear Log', self)  
         self.log_label = QLabel('Log:', self)  # Label for log_edit
         self.list_label = QLabel('List View:', self)  # Label for list_view
@@ -55,6 +57,7 @@ class CommandApp(QWidget):
         self.load_button.clicked.connect(self.load_csv)
         self.save_button.clicked.connect(self.save_csv)
         self.edit_button.clicked.connect(self.edit_row)
+        self.query_button.clicked.connect(self.query_data)
         self.clear_log_button.clicked.connect(self.clear_log)
 
         # Set up layout for buttons
@@ -62,6 +65,7 @@ class CommandApp(QWidget):
         button_layout.addWidget(self.load_button)
         button_layout.addWidget(self.save_button)
         button_layout.addWidget(self.edit_button)
+        button_layout.addWidget(self.query_button)
         button_layout.addWidget(self.clear_log_button)
 
         # Set up the main layout
@@ -86,11 +90,12 @@ class CommandApp(QWidget):
         self.data = []  # Store the loaded data in a list of rows
 
     def load_csv(self):
-        sample_command = "Load data from instruments.csv"
-        self.log_edit.append(sample_command)
 
         """Load data from a CSV file and populate the QListView"""
         file_name, _ = QFileDialog.getOpenFileName(self, "Open CSV File", "", "CSV Files (*.csv);;All Files (*)")
+
+        sample_command = f"Load data from {file_name}"
+        self.log_edit.append(sample_command)
         
         if file_name:
             try:
@@ -108,18 +113,7 @@ class CommandApp(QWidget):
 
             handler = CSVHandler(file_name)
             data = handler.read_csv()
-            instruments = []
-            for item in data:
-                ins = assemble_instrument(item)
-                instruments.append(ins)
-
-                if ins is not None:
-                    self.log_edit.append(str(ins))
-
-            if instruments is not None:
-                for ins in instruments:
-                    self.controller.set_instruments_sets([ins])
-                    print(self.controller.get_instruments_return_value())
+            self.controllerWrapper.write_parameters(data)
 
     def save_csv(self):
         """Save the current data in the QListView back to a CSV file"""
@@ -165,13 +159,18 @@ class CommandApp(QWidget):
         else:
             print("Edit canceled or empty input.")
 
+    def query_data(self):
+        self.controllerWrapper.read_parameters('adjusttemperature1')
+
     def clear_log(self):
         """Clear the contents of log_edit"""
         self.log_edit.clear()
 
     def closeEvent(self, event):
-        if self.simulation is not True:
-            self.controller.stop()
+        self.controllerWrapper.close()
+
+    def appendText(self, text):
+        self.log_edit.append(text)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
