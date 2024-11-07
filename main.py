@@ -36,7 +36,6 @@ class CommandApp(QWidget):
         self.simulation = simulation
         if self.simulation is not True:
             self.controller = TCMController("/dev/ttyUSB0", 57600)
-            self.controller.start()
 
     def __del__(self):
         pass
@@ -120,7 +119,6 @@ class CommandApp(QWidget):
             if instruments is not None:
                 for ins in instruments:
                     self.controller.set_instruments_sets([ins])
-                    self.controller.run()
                     print(self.controller.get_instruments_return_value())
 
     def save_csv(self):

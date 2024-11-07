@@ -7,6 +7,8 @@ import time
 
 from zlib import crc32
 
+from PyQt5.QtCore import QThread, pyqtSignal
+
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
@@ -32,7 +34,7 @@ class InstrumentStatus:
         self.status = 'FINISH'
 
 
-class TCMController:
+class TCMController(QThread):
     packet_serial = None
 
     def __init__(self, port, baud_rate = 57600):
@@ -58,6 +60,8 @@ class TCMController:
         self.instruments = []
 
         self.instrumentstatus.MAXinstrument = len(self.instruments)
+
+        self.start()
 
     def set_instruments_sets(self, instruments_list):
         self.instruments = instruments_list 
