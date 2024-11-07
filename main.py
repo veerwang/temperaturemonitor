@@ -36,7 +36,7 @@ class CommandApp(QWidget):
 
         self.controllerWrapper = ControllerWrapper(simulation) 
 
-        self.controllerWrapper.controller.processResult.connect(self.appendText)
+        #self.controllerWrapper.controller.processResult.connect(self.appendText)
 
     def __del__(self):
         pass

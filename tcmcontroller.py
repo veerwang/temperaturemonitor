@@ -40,6 +40,8 @@ class TCMController(QThread):
     packet_serial = None
 
     def __init__(self, port, baud_rate = 57600):
+        super().__init__()
+
         ports = [p.device for p in list_ports.comports() if port == p.device]
 
         if not ports:
@@ -51,7 +53,6 @@ class TCMController(QThread):
 
         self.lock = threading.RLock()
         self.query_interval = 1.0  # Query interval in seconds
-        self.running = False
         self.thread_read_received_packet = None
 
         # type A: means reply=1 is OK
@@ -62,7 +63,9 @@ class TCMController(QThread):
 
         self.instrumentstatus.MAXinstrument = len(self.instruments)
 
-        self.start()
+        self.running = True
+        self.thread_read_received_packet = threading.Thread(target=self.received_loop)
+        self.thread_read_received_packet.start()
 
     def set_commands(self, instruments_list):
         self.instruments = instruments_list 
@@ -143,11 +146,6 @@ class TCMController(QThread):
                 continue
             msg += char
 
-    def start(self):
-        self.running = True
-        self.thread_read_received_packet = threading.Thread(target=self.received_loop)
-        self.thread_read_received_packet.start()
-
     def stop(self):
         self.running = False
         if self.thread_read_received_packet:
@@ -158,42 +156,43 @@ class TCMController(QThread):
 
     def run(self):
         try:
-            while self.running is True and self.instrumentstatus.status != 'FINISH':
-                self.transparent_command(
-                        self.instruments[self.instrumentstatus.instrumentIndex][0])
-                self.instrumentstatus.status = 'PROCESS'
-                print('NO. ' + str(self.instrumentstatus.instrumentIndex + 1) 
-                      + ' Retry: ' + str(self.instrumentstatus.retry + 1) + ' Instrument: ' + self.instruments[self.instrumentstatus.instrumentIndex][0])
+            while self.running is True:
+                if self.instrumentstatus.status != 'FINISH':
+                    self.transparent_command(
+                            self.instruments[self.instrumentstatus.instrumentIndex][0])
+                    self.instrumentstatus.status = 'PROCESS'
+                    print('NO. ' + str(self.instrumentstatus.instrumentIndex + 1) 
+                          + ' Retry: ' + str(self.instrumentstatus.retry + 1) + ' Instrument: ' + self.instruments[self.instrumentstatus.instrumentIndex][0])
 
-                timeout = 10
-                while self.instrumentstatus.status == 'PROCESS' and timeout != 0: 
-                    time.sleep(0.5)
-                    timeout = timeout - 1
+                    timeout = 10
+                    while self.instrumentstatus.status == 'PROCESS' and timeout != 0: 
+                        time.sleep(0.5)
+                        timeout = timeout - 1
 
-                if self.instrumentstatus.status == 'OK':
-                    self.instrumentstatus.instrumentIndex = self.instrumentstatus.instrumentIndex + 1
-                    self.instrumentstatus.retry = 0
-                    if self.instrumentstatus.instrumentIndex == self.instrumentstatus.MAXinstrument:
+                    if self.instrumentstatus.status == 'OK':
+                        self.instrumentstatus.instrumentIndex = self.instrumentstatus.instrumentIndex + 1
+                        self.instrumentstatus.retry = 0
+                        if self.instrumentstatus.instrumentIndex == self.instrumentstatus.MAXinstrument:
+                            self.instrumentstatus.status = 'FINISH'
+                            self.processResult.emit('OK')
+                            print('Instruction Excution Successfully')
+                    elif self.instrumentstatus.status == 'FAIL':
+                        if self.instrumentstatus.retry < self.instrumentstatus.MAXretry: 
+                            self.instrumentstatus.retry += 1
+                        else:
+                            self.instrumentstatus.status = 'FINISH'
+                            print('Instruction Excution Fail: ' + self.instruments[self.instrumentstatus.instrumentIndex][0])
+                            print('Reply: ' + self.instrumentstatus.reply)
+                            self.processResult.emit('FAIL')
+                    elif self.instrumentstatus.status == 'PROCESS':
                         self.instrumentstatus.status = 'FINISH'
-                        self.processResult.emit('OK')
-                        print('Instruction Excution Successfully')
-                elif self.instrumentstatus.status == 'FAIL':
-                    if self.instrumentstatus.retry < self.instrumentstatus.MAXretry: 
-                        self.instrumentstatus.retry += 1
+                        print('Instruction Excution Timeout')
+                        self.processResult.emit('TIMEOUT')
+                    elif self.instrumentstatus.status == 'CONTINUE':
+                        print('PID arguments tuning: %' + self.instrumentstatus.percent)
                     else:
-                        self.instrumentstatus.status = 'FINISH'
-                        print('Instruction Excution Fail: ' + self.instruments[self.instrumentstatus.instrumentIndex][0])
-                        print('Reply: ' + self.instrumentstatus.reply)
-                        self.processResult.emit('FAIL')
-                elif self.instrumentstatus.status == 'PROCESS':
-                    self.instrumentstatus.status = 'FINISH'
-                    print('Instruction Excution Timeout')
-                    self.processResult.emit('TIMEOUT')
-                elif self.instrumentstatus.status == 'CONTINUE':
-                    print('PID arguments tuning: %' + self.instrumentstatus.percent)
-                else:
-                    print('Instruction Excution Unknown Error')
-                    self.processResult.emit('ERROR')
+                        print('Instruction Excution Unknown Error')
+                        self.processResult.emit('ERROR')
 
                 time.sleep(1)
 
@@ -223,6 +222,7 @@ class ControllerWrapper():
         self.simulation = simulation
         if self.simulation is not True:
             self.controller = TCMController("/dev/ttyUSB0", 57600)
+            self.controller.start()
 
     def close(self):
         if self.simulation is not True:
@@ -264,9 +264,8 @@ class ControllerWrapper():
             protectHitemperature1
             protectHitemperature2
         '''
-        commands_sets = [self.name_map_to_parameters_request_command[parameter_name], 'V']
+        commands_sets = [[self.name_map_to_parameters_request_command[parameter_name], 'V']]
 
-        print(commands_sets)
         if self.simulation is not True:
             self.controller.set_commands(commands_sets)
 
