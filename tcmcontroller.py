@@ -24,6 +24,7 @@ class InstrumentStatus:
         self.reply = ''
         self.retry = 0
         self.MAXretry = 5
+        self.value_name = ''
         self.value = 0
         # INIT:  
         # PROCESS:
@@ -35,7 +36,7 @@ class InstrumentStatus:
 
 
 class TCMController(QThread):
-    processResult = pyqtSignal(str)
+    processResult = pyqtSignal(str,str)
 
     packet_serial = None
 
@@ -73,8 +74,8 @@ class TCMController(QThread):
         self.instrumentstatus.MAXinstrument = len(self.instruments)
         self.instrumentstatus.status = 'INIT'
 
-    def get_instruments_return_value(self):
-        return self.instrumentstatus.value
+    def set_return_value_name(self, value_name):
+        self.instrumentstatus.value_name = value_name
 
     def transparent_command(self, command):
         with self.lock:
@@ -114,6 +115,8 @@ class TCMController(QThread):
                 if pos_1 != -1 and pos_2 != -1:
                     self.instrumentstatus.value = reply[pos_1 + 1:pos_2]
                     self.instrumentstatus.status = 'OK'
+                    self.processResult.emit(self.instrumentstatus.value_name, str(self.instrumentstatus.value))
+                    print(self.instrumentstatus.value)
                 else:
                     self.instrumentstatus.status = 'FAIL'
         elif self.instruments[self.instrumentstatus.instrumentIndex][1] == 'S': 
@@ -174,7 +177,7 @@ class TCMController(QThread):
                         self.instrumentstatus.retry = 0
                         if self.instrumentstatus.instrumentIndex == self.instrumentstatus.MAXinstrument:
                             self.instrumentstatus.status = 'FINISH'
-                            self.processResult.emit('OK')
+                            self.processResult.emit('Action','OK')
                             print('Instruction Excution Successfully')
                     elif self.instrumentstatus.status == 'FAIL':
                         if self.instrumentstatus.retry < self.instrumentstatus.MAXretry: 
@@ -183,16 +186,16 @@ class TCMController(QThread):
                             self.instrumentstatus.status = 'FINISH'
                             print('Instruction Excution Fail: ' + self.instruments[self.instrumentstatus.instrumentIndex][0])
                             print('Reply: ' + self.instrumentstatus.reply)
-                            self.processResult.emit('FAIL')
+                            self.processResult.emit('Action','FAIL')
                     elif self.instrumentstatus.status == 'PROCESS':
                         self.instrumentstatus.status = 'FINISH'
                         print('Instruction Excution Timeout')
-                        self.processResult.emit('TIMEOUT')
+                        self.processResult.emit('ACTION','TIMEOUT')
                     elif self.instrumentstatus.status == 'CONTINUE':
                         print('PID arguments tuning: %' + self.instrumentstatus.percent)
                     else:
                         print('Instruction Excution Unknown Error')
-                        self.processResult.emit('ERROR')
+                        self.processResult.emit('ACTION','ERROR')
 
                 time.sleep(1)
 
@@ -234,9 +237,11 @@ class ControllerWrapper():
         moduletype = parameters_dict['ModuleType']
         if moduletype == 'M207':
             adjusttemp1 = parameters_dict['AdjustTemperature1']
+            command_sets.append([f'TC1:TCSW=1@{address}', 'A'])
             command_sets.append([f'TC1:TCADJTEMP={adjusttemp1}@{address}', 'A'])
             command_sets.append([f'TC1:TCADJTEMP!@{address}', 'S'])
             adjusttemp2 = parameters_dict['AdjustTemperature2']
+            command_sets.append([f'TC2:TCSW=1@{address}', 'A'])
             command_sets.append([f'TC2:TCADJTEMP={adjusttemp2}@{address}', 'A'])
             command_sets.append([f'TC2:TCADJTEMP!@{address}', 'S'])
         return command_sets
@@ -268,4 +273,5 @@ class ControllerWrapper():
 
         if self.simulation is not True:
             self.controller.set_commands(commands_sets)
+            self.controller.set_return_value_name(parameter_name)
 

@@ -36,7 +36,8 @@ class CommandApp(QWidget):
 
         self.controllerWrapper = ControllerWrapper(simulation) 
 
-        #self.controllerWrapper.controller.processResult.connect(self.appendText)
+        if simulation is not True:
+            self.controllerWrapper.controller.processResult.connect(self.appendText)
 
     def __del__(self):
         pass
@@ -160,7 +161,7 @@ class CommandApp(QWidget):
             print("Edit canceled or empty input.")
 
     def query_data(self):
-        self.controllerWrapper.read_parameters('adjusttemperature1')
+        self.controllerWrapper.read_parameters('adjusttemperature2')
 
     def clear_log(self):
         """Clear the contents of log_edit"""
@@ -169,8 +170,8 @@ class CommandApp(QWidget):
     def closeEvent(self, event):
         self.controllerWrapper.close()
 
-    def appendText(self, text):
-        self.log_edit.append(text)
+    def appendText(self, name, text):
+        self.log_edit.append(name + ': ' + text)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
